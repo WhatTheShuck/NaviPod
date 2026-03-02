@@ -45,6 +45,9 @@ export component AppWindow inherits Window {
     in property <bool> shuffle-enabled: false;
     in property <string> repeat-mode: "off";        // "off" | "one" | "all"
     in property <string> queue-position: "";        // e.g. "3 / 10"
+    in-out property <bool> volume-visible: false;
+    in-out property <bool> playback-options-visible: false;
+    in-out property <int> playback-options-index: 0;    // 0=shuffle, 1=repeat
 
     // Library data (set from Rust after Subsonic fetch)
     in property <[LibraryItem]> library-items;
@@ -61,6 +64,7 @@ export component AppWindow inherits Window {
     callback theme-changed(AppTheme);
     callback toggle-shuffle();
     callback cycle-repeat();
+    callback long-select();
 
     // View stack
     if current-view == AppView.Menu: MenuView {
@@ -102,6 +106,9 @@ export component AppWindow inherits Window {
         menu-pressed => { root.menu-pressed(); }
         toggle-shuffle => { root.toggle-shuffle(); }
         cycle-repeat => { root.cycle-repeat(); }
+        volume-visible <=> root.volume-visible;
+        playback-options-visible <=> root.playback-options-visible;
+        playback-options-index <=> root.playback-options-index;
         scroll-up => { root.scroll-up(); }
         scroll-down => { root.scroll-down(); }
     }

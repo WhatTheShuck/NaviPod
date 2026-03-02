@@ -133,4 +133,7 @@ export global Theme {
 
     // Non-zero only for LiquidGlass — gates all frosted-glass decoration elements
     out property <float> glass-opacity: active == AppTheme.LiquidGlass ? 1.0 : 0.0;
+
+    // Art size hint — 96px for Classic, 168px for modern themes
+    out property <length> art-size: active == AppTheme.ClassicIPod ? 96px : 168px;
 }

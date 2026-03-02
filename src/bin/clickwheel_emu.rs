@@ -172,11 +172,18 @@ slint::slint! {
         }
 
         // SELECT — center button (topmost)
+        // Left-click = SELECT, Right-click = LONG_SELECT (shuffle/repeat modal)
         TouchArea {
             x: 93px; y: 123px; width: 114px; height: 114px;
             clicked => {
                 root.last-event = "SELECT";
                 root.send-event("SELECT");
+            }
+            pointer-event(e) => {
+                if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                    root.last-event = "LONG_SELECT";
+                    root.send-event("LONG_SELECT");
+                }
             }
         }
 

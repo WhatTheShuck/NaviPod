@@ -40,6 +40,8 @@ pub enum ClickwheelEvent {
     FastForward,
     /// Rewind (left of wheel)
     Rewind,
+    /// Long-press of the centre button
+    LongSelect,
 }
 
 // ── Option B: subprocess reader ───────────────────────────────────────────────
@@ -161,9 +163,10 @@ fn parse_event(s: &str) -> Option<ClickwheelEvent> {
         "SELECT"       => Some(ClickwheelEvent::Select),
         "MENU"         => Some(ClickwheelEvent::Menu),
         "PLAY_PAUSE"   => Some(ClickwheelEvent::PlayPause),
-        "FAST_FORWARD" => Some(ClickwheelEvent::FastForward),
-        "REWIND"       => Some(ClickwheelEvent::Rewind),
-        _              => None,
+        "FAST_FORWARD"  => Some(ClickwheelEvent::FastForward),
+        "REWIND"        => Some(ClickwheelEvent::Rewind),
+        "LONG_SELECT"   => Some(ClickwheelEvent::LongSelect),
+        _               => None,
     }
 }
 

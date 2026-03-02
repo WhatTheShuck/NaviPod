@@ -8,6 +8,7 @@ use crate::{
 use anyhow::Result;
 use slint::{ComponentHandle, Rgb8Pixel, SharedPixelBuffer, VecModel};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -155,6 +156,10 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
     let (nav_tx, nav_rx) = mpsc::channel::<NavCommand>(8);
     let library_item_count: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
+    // ── Volume-visible timer state ────────────────────────────────────────────
+    let vol_hide_gen: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+    let rt_handle = tokio::runtime::Handle::current();
+
     // ── Callbacks ─────────────────────────────────────────────────────────────
 
     window.on_scroll_up({
@@ -162,6 +167,8 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
         let cmd_tx = cmd_tx.clone();
         let state_rx = state_rx.clone();
         let lib_count = library_item_count.clone();
+        let vol_hide_gen = vol_hide_gen.clone();
+        let rt_handle = rt_handle.clone();
         move || {
             let Some(w) = ww.upgrade() else { return };
             match w.get_current_view() {
@@ -178,9 +185,30 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
                     }
                 }
                 AppView::NowPlaying => {
-                    // Scroll up = volume up
-                    let vol = (state_rx.borrow().volume + 0.05).min(1.0);
-                    let _ = cmd_tx.try_send(PlayerCommand::SetVolume(vol));
+                    if w.get_playback_options_visible() {
+                        // Navigate options modal: scroll up = move selection toward Shuffle
+                        let idx = w.get_playback_options_index();
+                        if idx > 0 { w.set_playback_options_index(idx - 1); }
+                    } else {
+                        // Scroll up = volume up
+                        let vol = (state_rx.borrow().volume + 0.05).min(1.0);
+                        let _ = cmd_tx.try_send(PlayerCommand::SetVolume(vol));
+                        w.set_volume_visible(true);
+                        let generation = vol_hide_gen.fetch_add(1, Ordering::SeqCst) + 1;
+                        let ww2 = ww.clone();
+                        let gen_check = vol_hide_gen.clone();
+                        rt_handle.spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            if gen_check.load(Ordering::SeqCst) == generation {
+                                slint::invoke_from_event_loop(move || {
+                                    if let Some(w) = ww2.upgrade() {
+                                        w.set_volume_visible(false);
+                                    }
+                                })
+                                .ok();
+                            }
+                        });
+                    }
                 }
             }
             let _ = lib_count; // keep alive
@@ -192,6 +220,8 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
         let cmd_tx = cmd_tx.clone();
         let state_rx = state_rx.clone();
         let lib_count = library_item_count.clone();
+        let vol_hide_gen = vol_hide_gen.clone();
+        let rt_handle = rt_handle.clone();
         move || {
             let Some(w) = ww.upgrade() else { return };
             match w.get_current_view() {
@@ -209,9 +239,30 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
                     }
                 }
                 AppView::NowPlaying => {
-                    // Scroll down = volume down
-                    let vol = (state_rx.borrow().volume - 0.05).max(0.0);
-                    let _ = cmd_tx.try_send(PlayerCommand::SetVolume(vol));
+                    if w.get_playback_options_visible() {
+                        // Navigate menu: scroll down = move selection down (max index 2)
+                        let idx = w.get_playback_options_index();
+                        if idx < 2 { w.set_playback_options_index(idx + 1); }
+                    } else {
+                        // Scroll down = volume down
+                        let vol = (state_rx.borrow().volume - 0.05).max(0.0);
+                        let _ = cmd_tx.try_send(PlayerCommand::SetVolume(vol));
+                        w.set_volume_visible(true);
+                        let generation = vol_hide_gen.fetch_add(1, Ordering::SeqCst) + 1;
+                        let ww2 = ww.clone();
+                        let gen_check = vol_hide_gen.clone();
+                        rt_handle.spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            if gen_check.load(Ordering::SeqCst) == generation {
+                                slint::invoke_from_event_loop(move || {
+                                    if let Some(w) = ww2.upgrade() {
+                                        w.set_volume_visible(false);
+                                    }
+                                })
+                                .ok();
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -221,7 +272,6 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
         let ww = window.as_weak();
         let nav_tx = nav_tx.clone();
         let cmd_tx = cmd_tx.clone();
-        let state_rx = state_rx.clone();
         move || {
             let Some(w) = ww.upgrade() else { return };
             match w.get_current_view() {
@@ -233,23 +283,34 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
                         .try_send(NavCommand::LibrarySelect(w.get_library_selected_index()));
                 }
                 AppView::NowPlaying => {
-                    // Centre button toggles play/pause
-                    if state_rx.borrow().is_playing {
-                        let _ = cmd_tx.try_send(PlayerCommand::Pause);
+                    if w.get_playback_options_visible() {
+                        // Menu open: activate the highlighted item
+                        match w.get_playback_options_index() {
+                            0 => { let _ = cmd_tx.try_send(PlayerCommand::ToggleShuffle); }
+                            1 => { let _ = cmd_tx.try_send(PlayerCommand::CycleRepeat); }
+                            _ => { w.set_playback_options_visible(false); } // Queue row: close
+                        }
                     } else {
-                        let _ = cmd_tx.try_send(PlayerCommand::Resume);
+                        // Menu closed: SELECT opens the Now Playing menu
+                        w.set_playback_options_visible(true);
+                        w.set_playback_options_index(0);
                     }
                 }
             }
         }
     });
 
-    // ‹ button: go back one level in Library, or all the way to Menu
+    // MENU button: closes playback options if open, else back-navigates
     window.on_menu_pressed({
         let ww = window.as_weak();
         let nav_tx = nav_tx.clone();
         move || {
             let Some(w) = ww.upgrade() else { return };
+            // If options modal is open, close it and stay in NowPlaying
+            if w.get_current_view() == AppView::NowPlaying && w.get_playback_options_visible() {
+                w.set_playback_options_visible(false);
+                return;
+            }
             if w.get_current_view() == AppView::Library {
                 let _ = nav_tx.try_send(NavCommand::Back);
             } else {
@@ -296,6 +357,11 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
         move || {
             let _ = cmd_tx.try_send(PlayerCommand::CycleRepeat);
         }
+    });
+
+    window.on_long_select({
+        // Long SELECT not currently assigned — regular SELECT opens the menu
+        move || {}
     });
 
     window.on_theme_changed({
@@ -347,7 +413,7 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
                 if cover_changed {
                     last_cover_id = new_cover.clone();
                     if let Some(cover_id) = new_cover {
-                        let art_url = subsonic_art.cover_art_url(&cover_id, Some(80));
+                        let art_url = subsonic_art.cover_art_url(&cover_id, Some(200));
                         let ww2 = ww.clone();
                         tokio::spawn(async move {
                             fetch_and_set_album_art(art_url, ww2).await;
@@ -420,6 +486,7 @@ pub async fn run(subsonic: Client, cfg: Config) -> Result<()> {
                         ClickwheelEvent::ScrollUp    => w.invoke_scroll_up(),
                         ClickwheelEvent::ScrollDown  => w.invoke_scroll_down(),
                         ClickwheelEvent::Select      => w.invoke_select(),
+                        ClickwheelEvent::LongSelect  => w.invoke_long_select(),
                         ClickwheelEvent::Menu        => w.invoke_menu_pressed(),
                         ClickwheelEvent::PlayPause   => w.invoke_play_pause(),
                         ClickwheelEvent::FastForward => w.invoke_next_track(),

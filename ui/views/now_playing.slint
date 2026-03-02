@@ -16,6 +16,9 @@ export component NowPlayingView {
     in property <bool> shuffle-enabled: false;
     in property <string> repeat-mode: "off";
     in property <string> queue-position: "";
+    in-out property <bool> volume-visible: false;
+    in-out property <bool> playback-options-visible: false;
+    in-out property <int> playback-options-index: 0;    // 0=shuffle, 1=repeat, 2=queue
 
     callback play-pause();
     callback next-track();
@@ -29,17 +32,13 @@ export component NowPlayingView {
     width: 100%;
     height: 100%;
 
-    // Classic iPod adds a "Now Playing" header bar at y:0–22, which shifts the
-    // rest of the content down. All content elements use y-top as their base offset.
-    property <length> y-top: theme == AppTheme.ClassicIPod ? 22px : 0px;
-
     // ── Background ───────────────────────────────────────────────────────────
     Rectangle {
         width: 100%; height: 100%;
         background: Theme.background;
     }
 
-    // Background scroll area (volume control via scroll wheel)
+    // Background scroll area (volume in NowPlaying, nav in other views)
     TouchArea {
         width: 100%; height: 100%;
         scroll-event(e) => {
@@ -48,279 +47,464 @@ export component NowPlayingView {
         }
     }
 
-    // ── Classic iPod: "Now Playing" header bar ────────────────────────────────
-    if theme == AppTheme.ClassicIPod: Rectangle {
-        x: 0; y: 0; width: 100%; height: 22px;
-        background: Theme.header-bg;
-        clip: true;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MODERN LAYOUT — LiquidGlass + Material
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if theme != AppTheme.ClassicIPod: Rectangle {
+        x: 0; y: 0;
+        width: 100%; height: 100%;
+        background: Colors.transparent;
+
+        // ── Album art: 168×168, centered (x:76, y:0) ─────────────────────────
+        Rectangle {
+            x: 76px; y: 0;
+            width: 168px; height: 168px;
+            border-radius: Theme.radius;
+            background: Theme.surface;
+            clip: true;
+
+            Image {
+                width: 100%; height: 100%;
+                source: album-art;
+                image-fit: cover;
+            }
+
+            // Pause overlay: 50% dark + ⏸ icon when not playing
+            if !is-playing: Rectangle {
+                width: 100%; height: 100%;
+                background: rgba(0, 0, 0, 0.50);
+
+                Text {
+                    width: 100%; height: 100%;
+                    text: "⏸";
+                    color: rgba(255, 255, 255, 0.85);
+                    font-size: 36px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            // LiquidGlass: shimmer glint on top edge of art
+            if Theme.glass-opacity > 0.0: Rectangle {
+                x: 0; y: 0;
+                width: 100%; height: 40px;
+                background: @linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.0));
+            }
+        }
+
+        // ── Volume pill — fades in/out on scroll ─────────────────────────────
+        Rectangle {
+            x: 290px; y: 44px;
+            width: 22px; height: 80px;
+            border-radius: 11px;
+            background: Theme.glass-opacity > 0.0
+                ? rgba(255, 255, 255, 0.10)
+                : rgba(20, 20, 20, 0.92);
+            border-width: 1px;
+            border-color: Theme.glass-opacity > 0.0
+                ? rgba(255, 255, 255, 0.20)
+                : rgba(255, 255, 255, 0.08);
+            opacity: volume-visible ? 1.0 : 0.0;
+            animate opacity { duration: 400ms; }
+
+            // Volume percentage at top
+            Text {
+                x: 0; y: 3px;
+                width: 22px;
+                text: Math.round(volume-level * 100);
+                color: Theme.text-primary;
+                font-size: 7px;
+                horizontal-alignment: center;
+            }
+
+            // Accent fill bar growing from bottom (below text)
+            Rectangle {
+                x: 3px;
+                y: 15px + (62px - 62px * volume-level);
+                width: 16px;
+                height: 62px * volume-level;
+                border-radius: 8px;
+                background: Theme.accent;
+            }
+        }
+
+        // ── Track title — centered ────────────────────────────────────────────
+        Text {
+            x: 14px; y: 172px;
+            width: 292px;
+            text: track-title;
+            color: Theme.text-primary;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+
+        // ── Artist · Album — centered, dimmed ─────────────────────────────────
+        Text {
+            x: 14px; y: 187px;
+            width: 292px;
+            text: track-artist + " · " + track-album;
+            color: Theme.text-secondary;
+            font-size: 10px;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+
+        // ── Progress bar — 2px thin ───────────────────────────────────────────
+        Rectangle {
+            x: 14px; y: 202px;
+            width: 292px; height: 2px;
+            border-radius: 1px;
+            background: Theme.progress-track;
+
+            Rectangle {
+                x: 0; y: 0;
+                width: parent.width * playback-progress;
+                height: 100%;
+                border-radius: 1px;
+                background: Theme.progress-fill;
+            }
+        }
+
+        // ── Time labels ───────────────────────────────────────────────────────
+        Text {
+            x: 14px; y: 206px;
+            width: 60px;
+            text: elapsed-time;
+            color: Theme.text-secondary;
+            font-size: 9px;
+            horizontal-alignment: left;
+        }
 
         Text {
-            x: 28px; y: 3px;
-            width: parent.width - 56px;
-            text: "Now Playing";
-            color: Theme.header-text;
-            font-size: Theme.font-size-medium;
-            font-weight: 700;
+            x: 246px; y: 206px;
+            width: 60px;
+            text: total-time;
+            color: Theme.text-secondary;
+            font-size: 9px;
+            horizontal-alignment: right;
+        }
+
+        // ── Material only: compact status row ─────────────────────────────────
+        if theme == AppTheme.Material: Text {
+            x: 14px; y: 221px;
+            width: 40px;
+            text: "⇌";
+            color: shuffle-enabled ? Theme.accent : Theme.text-secondary;
+            font-size: 13px;
             horizontal-alignment: center;
         }
 
-        // Back (‹) button
-        Text { x: 4px; y: 3px; text: "‹"; color: Theme.header-text; font-size: Theme.font-size-large; }
-        TouchArea {
-            x: 0; y: 0; width: 28px; height: 22px;
-            clicked => { root.menu-pressed(); }
+        if theme == AppTheme.Material: Text {
+            x: 100px; y: 220px;
+            width: 50px;
+            text: is-playing ? "▶" : "⏸";
+            color: Theme.text-secondary;
+            font-size: 12px;
+            horizontal-alignment: center;
         }
 
-        // Bottom border
-        Rectangle { y: 21px; width: 100%; height: 1px; background: rgba(0, 0, 0, 0.28); }
-    }
-
-    // ── LiquidGlass: ambient glow behind album art ────────────────────────────
-    if Theme.glass-opacity > 0.0: Rectangle {
-        x: 2px; y: y-top + 2px;
-        width: 92px; height: 92px;
-        border-radius: Theme.radius + 6px;
-        background: rgba(100, 210, 255, 0.12);
-    }
-
-    // ── Classic: drop-shadow behind album art ────────────────────────────────
-    if theme == AppTheme.ClassicIPod: Rectangle {
-        x: 10px; y: y-top + 10px;
-        width: 80px; height: 80px;
-        border-radius: Theme.radius;
-        background: rgba(0, 0, 0, 0.22);
-    }
-
-    // ── Album art ────────────────────────────────────────────────────────────
-    Rectangle {
-        x: 8px; y: y-top + 8px;
-        width: 80px; height: 80px;
-        border-radius: Theme.radius;
-        background: Theme.surface;
-        border-width: theme == AppTheme.ClassicIPod ? 2px : 1px;
-        border-color: theme == AppTheme.ClassicIPod
-            ? rgba(0, 0, 0, 0.28)
-            : Theme.surface-border;
-        clip: true;
-
-        Image {
-            width: 100%; height: 100%;
-            source: album-art;
-            image-fit: cover;
-        }
-    }
-
-    // LiquidGlass: gradient shimmer overlay on the top portion of the art
-    if Theme.glass-opacity > 0.0: Rectangle {
-        x: 8px; y: y-top + 8px;
-        width: 80px; height: 28px;
-        border-radius: Theme.radius;
-        background: @linear-gradient(180deg, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.0));
-    }
-
-    // ── LiquidGlass: frosted glass card behind track info ────────────────────
-    if Theme.glass-opacity > 0.0: Rectangle {
-        x: 90px; y: y-top + 4px;
-        width: 226px; height: 88px;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.05);
-        border-width: 1px;
-        border-color: rgba(255, 255, 255, 0.12);
-    }
-    // Shimmer edge at top of that card
-    if Theme.glass-opacity > 0.0: Rectangle {
-        x: 91px; y: y-top + 4px;
-        width: 224px; height: 1px;
-        background: rgba(255, 255, 255, 0.32);
-    }
-
-    // ── Track info ───────────────────────────────────────────────────────────
-    Text {
-        x: 96px; y: y-top + 10px;
-        width: 216px;
-        text: track-title;
-        color: Theme.text-primary;
-        font-size: Theme.font-size-large;
-        font-weight: 700;
-        overflow: elide;
-    }
-
-    Text {
-        x: 96px; y: y-top + 28px;
-        width: 216px;
-        text: track-artist;
-        color: Theme.accent;
-        font-size: Theme.font-size-medium;
-        overflow: elide;
-    }
-
-    Text {
-        x: 96px; y: y-top + 44px;
-        width: 216px;
-        text: track-album;
-        color: Theme.text-secondary;
-        font-size: Theme.font-size-small;
-        overflow: elide;
-    }
-
-    // Queue position (e.g. "♪ 3 / 10")
-    if queue-position != "": Text {
-        x: 96px; y: y-top + 58px;
-        width: 216px;
-        text: "♪ " + queue-position;
-        color: Theme.text-secondary;
-        font-size: Theme.font-size-small;
-    }
-
-    // ── Progress bar ─────────────────────────────────────────────────────────
-    Rectangle {
-        x: 8px; y: y-top + 100px;
-        width: 304px; height: 4px;
-        border-radius: 2px;
-        background: Theme.progress-track;
-
-        // Filled portion
-        Rectangle {
-            x: 0; y: 0;
-            width: parent.width * playback-progress;
-            height: 100%;
-            border-radius: 2px;
-            background: Theme.progress-fill;
+        if theme == AppTheme.Material && queue-position != "": Text {
+            x: 148px; y: 222px;
+            width: 72px;
+            text: "♪ " + queue-position;
+            color: Theme.text-secondary;
+            font-size: 9px;
+            horizontal-alignment: center;
         }
 
-        // LiquidGlass: bright glint on top of the fill
-        if Theme.glass-opacity > 0.0: Rectangle {
-            x: 0; y: 0;
-            width: parent.width * playback-progress;
-            height: 2px;
-            border-radius: 2px;
-            background: rgba(255, 255, 255, 0.35);
-        }
-    }
-
-    // ── Elapsed / total time ─────────────────────────────────────────────────
-    Text {
-        x: 8px; y: y-top + 107px;
-        width: 60px;
-        text: elapsed-time;
-        color: Theme.text-secondary;
-        font-size: Theme.font-size-small;
-        horizontal-alignment: left;
-    }
-    Text {
-        x: 252px; y: y-top + 107px;
-        width: 60px;
-        text: total-time;
-        color: Theme.text-secondary;
-        font-size: Theme.font-size-small;
-        horizontal-alignment: right;
-    }
-
-    // ── Playback controls ────────────────────────────────────────────────────
-
-    // Back (‹) — not shown for Classic since it's in the header bar
-    if theme != AppTheme.ClassicIPod: Rectangle {
-        x: 8px; y: y-top + 120px; width: 30px; height: 24px;
-        border-radius: Theme.control-radius;
-        background: Theme.control-bg;
-        border-width: 1px; border-color: Theme.control-border;
-        Text { x: 0; y: 2px; width: 100%; text: "‹";
-               color: Theme.text-secondary; font-size: Theme.font-size-large;
-               horizontal-alignment: center; }
-        TouchArea { width: 100%; height: 100%; clicked => { root.menu-pressed(); } }
-    }
-
-    // Previous
-    Rectangle {
-        x: 80px; y: y-top + 120px; width: 40px; height: 24px;
-        border-radius: Theme.control-radius;
-        background: Theme.control-bg;
-        border-width: 1px; border-color: Theme.control-border;
-        Text { x: 0; y: 2px; width: 100%; text: "⏮";
-               color: Theme.text-primary; font-size: 14px; horizontal-alignment: center; }
-        TouchArea { width: 100%; height: 100%; clicked => { root.prev-track(); } }
-    }
-
-    // Play / Pause
-    Rectangle {
-        x: 130px; y: y-top + 120px; width: 60px; height: 24px;
-        border-radius: Theme.control-radius;
-        background: Theme.control-bg;
-        border-width: 1px; border-color: Theme.control-border;
-        Text { x: 0; y: 2px; width: 100%; text: is-playing ? "⏸" : "▶";
-               color: Theme.text-primary; font-size: 14px; horizontal-alignment: center; }
-        TouchArea { width: 100%; height: 100%; clicked => { root.play-pause(); } }
-    }
-
-    // Next
-    Rectangle {
-        x: 230px; y: y-top + 120px; width: 40px; height: 24px;
-        border-radius: Theme.control-radius;
-        background: Theme.control-bg;
-        border-width: 1px; border-color: Theme.control-border;
-        Text { x: 0; y: 2px; width: 100%; text: "⏭";
-               color: Theme.text-primary; font-size: 14px; horizontal-alignment: center; }
-        TouchArea { width: 100%; height: 100%; clicked => { root.next-track(); } }
-    }
-
-    // ── Volume bar ───────────────────────────────────────────────────────────
-    Text {
-        x: 8px; y: y-top + 150px;
-        width: 26px;
-        text: "Vol";
-        color: Theme.text-secondary;
-        font-size: Theme.font-size-small;
-    }
-    Rectangle {
-        x: 38px; y: y-top + 153px;
-        width: 274px; height: 3px;
-        border-radius: 1px;
-        background: Theme.progress-track;
-
-        Rectangle {
-            x: 0; y: 0;
-            width: parent.width * volume-level;
-            height: 100%;
-            border-radius: 1px;
-            background: Theme.accent;
-        }
-    }
-
-    // ── Shuffle / Repeat ─────────────────────────────────────────────────────
-    Rectangle {
-        x: 8px; y: y-top + 164px; width: 100px; height: 18px;
-        Text {
-            x: 0; y: 2px; width: 100%;
-            text: shuffle-enabled ? "⇌ Shuffle: On" : "⇌ Shuffle";
-            color: shuffle-enabled ? Theme.accent : Theme.text-secondary;
-            font-size: Theme.font-size-small;
-        }
-        TouchArea { width: 100%; height: 100%; clicked => { root.toggle-shuffle(); } }
-    }
-
-    Rectangle {
-        x: 212px; y: y-top + 164px; width: 100px; height: 18px;
-        Text {
-            x: 0; y: 2px; width: 100%;
-            text: repeat-mode == "one" ? "↺ Repeat: 1"
-                : repeat-mode == "all" ? "↺ Repeat: ∞"
-                : "↺ Repeat";
+        if theme == AppTheme.Material: Text {
+            x: 266px; y: 221px;
+            width: 40px;
+            text: "↺";
             color: repeat-mode != "off" ? Theme.accent : Theme.text-secondary;
+            font-size: 13px;
+            horizontal-alignment: center;
+        }
+
+        // ── LiquidGlass only: glass pill menu button ──────────────────────────
+        // Shows shuffle/repeat state at a glance. SELECT opens the options menu.
+        if Theme.glass-opacity > 0.0: Rectangle {
+            x: 90px; y: 216px;
+            width: 140px; height: 26px;
+            border-radius: 13px;
+            background: playback-options-visible
+                ? rgba(255, 255, 255, 0.18)
+                : rgba(255, 255, 255, 0.10);
+            border-width: 1px;
+            border-color: rgba(255, 255, 255, 0.22);
+            animate background { duration: 200ms; }
+
+            // Top-edge shimmer (liquid glass shine)
+            Rectangle {
+                x: 0; y: 0;
+                width: 100%; height: 13px;
+                border-radius: 13px;
+                background: @linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.0));
+            }
+
+            // Shuffle indicator — accent when on, dim when off
+            Text {
+                x: 12px; y: 0;
+                width: 28px; height: 26px;
+                text: "⇌";
+                color: shuffle-enabled ? Theme.accent : rgba(255, 255, 255, 0.28);
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            // Repeat indicator — accent when on, dim when off
+            Text {
+                x: 100px; y: 0;
+                width: 28px; height: 26px;
+                text: "↺";
+                color: repeat-mode != "off" ? Theme.accent : rgba(255, 255, 255, 0.28);
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLASSIC IPOD LAYOUT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if theme == AppTheme.ClassicIPod: Rectangle {
+        x: 0; y: 0;
+        width: 100%; height: 100%;
+        background: Colors.transparent;
+
+        // ── Header bar: y:0–22, silver gradient ──────────────────────────────
+        Rectangle {
+            x: 0; y: 0; width: 100%; height: 22px;
+            background: Theme.header-bg;
+            clip: true;
+
+            Text {
+                x: 28px; y: 3px;
+                width: parent.width - 56px;
+                text: "Now Playing";
+                color: Theme.header-text;
+                font-size: Theme.font-size-medium;
+                font-weight: 700;
+                horizontal-alignment: center;
+            }
+
+            Text { x: 4px; y: 3px; text: "‹"; color: Theme.header-text; font-size: Theme.font-size-large; }
+
+            Rectangle { y: 21px; width: 100%; height: 1px; background: rgba(0, 0, 0, 0.28); }
+        }
+
+        // ── Album art: 96×96 at x:8, y:24, 2px black border ─────────────────
+        Rectangle {
+            x: 8px; y: 24px;
+            width: 96px; height: 96px;
+            border-radius: 2px;
+            background: #cccccc;
+            border-width: 2px;
+            border-color: rgba(0, 0, 0, 0.80);
+            clip: true;
+
+            Image {
+                width: 100%; height: 100%;
+                source: album-art;
+                image-fit: cover;
+            }
+        }
+
+        // ── Track info: x:112 ─────────────────────────────────────────────────
+        Text {
+            x: 112px; y: 28px;
+            width: 200px;
+            text: track-title;
+            color: Theme.text-primary;
+            font-size: 13px;
+            font-weight: 700;
+            overflow: elide;
+        }
+
+        Text {
+            x: 112px; y: 44px;
+            width: 200px;
+            text: track-artist;
+            color: Theme.text-primary;
+            font-size: 11px;
+            overflow: elide;
+        }
+
+        Text {
+            x: 112px; y: 60px;
+            width: 200px;
+            text: track-album;
+            color: Theme.text-secondary;
+            font-size: 10px;
+            overflow: elide;
+        }
+
+        if queue-position != "": Text {
+            x: 112px; y: 76px;
+            width: 200px;
+            text: "♪ " + queue-position;
+            color: Theme.text-secondary;
+            font-size: 9px;
+        }
+
+        // ── Separator at y:122 ────────────────────────────────────────────────
+        Rectangle {
+            x: 0; y: 122px; width: 100%; height: 1px;
+            background: rgba(0, 0, 0, 0.20);
+        }
+
+        // ── Progress bar at y:128, 4px height ─────────────────────────────────
+        Rectangle {
+            x: 8px; y: 128px;
+            width: 304px; height: 4px;
+            border-radius: 2px;
+            background: Theme.progress-track;
+
+            Rectangle {
+                x: 0; y: 0;
+                width: parent.width * playback-progress;
+                height: 100%;
+                border-radius: 2px;
+                background: Theme.progress-fill;
+            }
+        }
+
+        // ── Time labels at y:135 ──────────────────────────────────────────────
+        Text {
+            x: 8px; y: 135px;
+            width: 60px;
+            text: elapsed-time;
+            color: Theme.text-secondary;
+            font-size: Theme.font-size-small;
+            horizontal-alignment: left;
+        }
+
+        Text {
+            x: 252px; y: 135px;
+            width: 60px;
+            text: total-time;
+            color: Theme.text-secondary;
             font-size: Theme.font-size-small;
             horizontal-alignment: right;
         }
-        TouchArea { width: 100%; height: 100%; clicked => { root.cycle-repeat(); } }
+
+        // ── Volume at y:150: "Vol" label + horizontal bar ─────────────────────
+        Text {
+            x: 8px; y: 150px;
+            width: 26px;
+            text: "Vol";
+            color: Theme.text-secondary;
+            font-size: Theme.font-size-small;
+        }
+
+        Rectangle {
+            x: 38px; y: 153px;
+            width: 274px; height: 3px;
+            border-radius: 1px;
+            background: Theme.progress-track;
+
+            Rectangle {
+                x: 0; y: 0;
+                width: parent.width * volume-level;
+                height: 100%;
+                border-radius: 1px;
+                background: Theme.accent;
+            }
+        }
     }
 
-    // ── Theme label (dev aid, bottom-right corner) ────────────────────────────
-    Text {
-        x: 260px; y: 228px;
-        width: 56px;
-        text: theme == AppTheme.LiquidGlass ? "Glass"
-            : theme == AppTheme.Material     ? "Material"
-            : "Classic";
-        color: Theme.text-secondary;
-        font-size: Theme.font-size-small;
-        horizontal-alignment: right;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NOW PLAYING MENU — SELECT in NowPlaying, all themes
+    // SCROLL moves highlight, SELECT activates item, MENU closes.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if playback-options-visible: Rectangle {
+        x: 60px; y: 94px;
+        width: 200px; height: 112px;
+        border-radius: 14px;
+        background: theme == AppTheme.ClassicIPod ? #ebebeb : rgba(18, 18, 20, 0.96);
+        border-width: 1px;
+        border-color: Theme.surface-border;
+
+        // LiquidGlass: top-edge shimmer on the card
+        if Theme.glass-opacity > 0.0: Rectangle {
+            x: 1px; y: 0;
+            width: 198px; height: 1px;
+            background: rgba(255, 255, 255, 0.30);
+        }
+
+        // ── Shuffle row ───────────────────────────────────────────────────────
+        Rectangle {
+            x: 4px; y: 8px;
+            width: 192px; height: 32px;
+            border-radius: 8px;
+            background: playback-options-index == 0 ? Theme.selection-bg : Colors.transparent;
+
+            Text {
+                x: 10px; y: 7px;
+                text: "⇌  Shuffle";
+                color: Theme.text-primary;
+                font-size: 11px;
+            }
+            Text {
+                x: 0; y: 7px; width: 180px;
+                text: shuffle-enabled ? "ON" : "off";
+                color: shuffle-enabled ? Theme.accent : Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: right;
+            }
+        }
+
+        // ── Repeat row ────────────────────────────────────────────────────────
+        Rectangle {
+            x: 4px; y: 40px;
+            width: 192px; height: 32px;
+            border-radius: 8px;
+            background: playback-options-index == 1 ? Theme.selection-bg : Colors.transparent;
+
+            Text {
+                x: 10px; y: 7px;
+                text: "↺  Repeat";
+                color: Theme.text-primary;
+                font-size: 11px;
+            }
+            Text {
+                x: 0; y: 7px; width: 180px;
+                text: repeat-mode == "one" ? "ONE"
+                    : repeat-mode == "all" ? "ALL"
+                    : "off";
+                color: repeat-mode != "off" ? Theme.accent : Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: right;
+            }
+        }
+
+        // ── Queue row (informational — SELECT closes menu) ────────────────────
+        Rectangle {
+            x: 4px; y: 72px;
+            width: 192px; height: 32px;
+            border-radius: 8px;
+            background: playback-options-index == 2 ? Theme.selection-bg : Colors.transparent;
+
+            Text {
+                x: 10px; y: 7px;
+                text: "♪  Queue";
+                color: Theme.text-primary;
+                font-size: 11px;
+            }
+            Text {
+                x: 0; y: 7px; width: 180px;
+                text: queue-position != "" ? queue-position : "—";
+                color: Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: right;
+            }
+        }
     }
 }
