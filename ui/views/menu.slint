@@ -1,0 +1,128 @@
+// views/menu.slint
+
+import { Theme, AppTheme } from "../themes/theme.slint";
+
+export struct MenuItem {
+    label: string,
+    has-arrow: bool,
+}
+
+export component MenuView {
+    in property <AppTheme> theme;
+    in property <[MenuItem]> items: [
+        { label: "Music",        has-arrow: true  },
+        { label: "Now Playing",  has-arrow: true  },
+        { label: "Settings",     has-arrow: true  },
+        { label: "Theme",        has-arrow: true  },
+    ];
+    in-out property <int> selected-index: 0;
+
+    callback scroll-up();
+    callback scroll-down();
+    callback select();
+
+    width: 100%;
+    height: 100%;
+
+    // ── Background ───────────────────────────────────────────────────────────
+    Rectangle {
+        width: 100%; height: 100%;
+        background: Theme.background;
+    }
+
+    // Background TouchArea — catches scroll wheel on empty space
+    TouchArea {
+        width: 100%; height: 100%;
+        scroll-event(e) => {
+            if e.delta-y < 0 { root.scroll-up(); } else { root.scroll-down(); }
+            EventResult.accept
+        }
+    }
+
+    // ── Header bar ───────────────────────────────────────────────────────────
+    Rectangle {
+        x: 0; y: 0;
+        width: 100%; height: 24px;
+        background: Theme.header-bg;
+        clip: true;
+
+        // LiquidGlass: 1-px top shimmer line
+        Rectangle {
+            x: 0; y: 0; width: 100%; height: 1px;
+            background: Theme.shimmer;
+        }
+
+        Text {
+            x: 0; y: 4px;
+            width: parent.width;
+            text: "NaviPod";
+            color: Theme.header-text;
+            font-size: Theme.font-size-medium;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        // Bottom border
+        Rectangle {
+            y: 23px; width: 100%; height: 1px;
+            background: theme == AppTheme.ClassicIPod
+                ? rgba(0, 0, 0, 0.28)
+                : Theme.separator;
+        }
+    }
+
+    // ── Menu items ───────────────────────────────────────────────────────────
+    for item[i] in items: Rectangle {
+        x: 0;
+        y: 24px + i * 32px;
+        width: 100%;
+        height: 32px;
+        // Selection uses the gradient/glass token; unselected uses row-bg.
+        background: i == selected-index ? Theme.selection-bg : Theme.row-bg;
+        clip: true;
+
+        // Material only: subtle alternating tint on unselected rows
+        if theme == AppTheme.Material && i != selected-index: Rectangle {
+            x: 0; y: 0; width: 100%; height: 100%;
+            background: Math.mod(i, 2) == 0 ? Theme.surface : Colors.transparent;
+        }
+
+        // LiquidGlass: 1-px shimmer at top of selected row
+        if Theme.glass-opacity > 0.0 && i == selected-index: Rectangle {
+            x: 0; y: 0; width: 100%; height: 1px;
+            background: Theme.shimmer;
+        }
+
+        Text {
+            x: 12px; y: 8px;
+            width: parent.width - 28px;
+            text: item.label;
+            color: i == selected-index ? #ffffff : Theme.text-primary;
+            font-size: Theme.font-size-medium;
+            font-weight: i == selected-index ? 700 : 400;
+        }
+
+        if item.has-arrow: Text {
+            x: parent.width - 16px; y: 8px;
+            width: 12px;
+            text: "›";
+            color: i == selected-index ? rgba(255, 255, 255, 0.75) : Theme.text-secondary;
+            font-size: Theme.font-size-medium;
+        }
+
+        // Row separator (hidden on selected row to keep the gradient clean)
+        Rectangle {
+            y: 31px; width: 100%; height: 1px;
+            background: i == selected-index ? Colors.transparent : Theme.separator;
+        }
+
+        TouchArea {
+            width: 100%; height: 100%;
+            clicked => { selected-index = i; root.select(); }
+            scroll-event(e) => {
+                if e.delta-y < 0 { root.scroll-up(); } else { root.scroll-down(); }
+                EventResult.accept
+            }
+        }
+    }
+}

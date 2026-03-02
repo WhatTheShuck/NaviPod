@@ -1,0 +1,64 @@
+[package]
+name = "navipod"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "navipod"
+path = "src/main.rs"
+
+[[bin]]
+name = "clickwheel_emu"
+path = "src/bin/clickwheel_emu.rs"
+
+[dependencies]
+# UI framework
+slint = "1.15"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client for Subsonic API
+reqwest = { version = "0.13", features = ["json", "query"] }
+
+# Serialisation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# XML parsing (Subsonic REST API returns XML)
+quick-xml = { version = "0.39", features = ["serialize"] }
+
+# MD5 for Subsonic auth token
+md5 = "0.8"
+
+# Audio playback
+rodio = { version = "0.22", default-features = false, features = ["playback", "mp3", "flac", "vorbis", "wav"] }
+
+# Image decoding for album art (JPEG / PNG from Subsonic)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+# Shuffle support
+rand = "0.8"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Config file (TOML)
+toml = "1"
+dirs = "6"
+
+[build-dependencies]
+slint-build = "1.15"
+
+# For cross-compiling to Pi Zero W (arm6 / armv6l)
+# Run: cargo build --target arm-unknown-linux-gnueabihf --release
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

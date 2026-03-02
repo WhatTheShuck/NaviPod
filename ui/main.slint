@@ -1,0 +1,108 @@
+import { Theme, AppTheme } from "themes/theme.slint";
+import { NowPlayingView } from "views/now_playing.slint";
+import { LibraryView, LibraryItem } from "views/library.slint";
+import { MenuView } from "views/menu.slint";
+
+export { AppTheme } from "themes/theme.slint";
+export { LibraryItem } from "views/library.slint";
+
+export enum AppView {
+    Menu,
+    Library,
+    NowPlaying,
+}
+
+export component AppWindow inherits Window {
+    title: "NaviPod";
+    // iPod Classic screen is 320x240. Scale up 2x for Pi display.
+    width: 320px;
+    height: 240px;
+    background: Theme.background;
+
+    // View / theme state
+    in-out property <AppView> current-view: AppView.Menu;
+    in-out property <AppTheme> current-theme: AppTheme.LiquidGlass;
+
+    // Keep the global Theme token store in sync with the selected theme.
+    // Without this assignment the global always uses its default (LiquidGlass).
+    init => { Theme.active = current-theme; }
+    changed current-theme => { Theme.active = current-theme; }
+
+    // Selection state (driven by Rust scroll/click handlers)
+    in-out property <int> menu-selected-index: 0;
+    in-out property <int> library-selected-index: 0;
+
+    // Playback state (set from Rust)
+    in property <string> track-title: "Not playing";
+    in property <string> track-artist: "";
+    in property <string> track-album: "";
+    in property <float> playback-progress: 0.0;   // 0.0 – 1.0
+    in property <bool> is-playing: false;
+    in property <image> album-art;
+    in property <string> elapsed-time: "0:00";
+    in property <string> total-time: "0:00";
+    in property <float> volume-level: 0.7;         // 0.0 – 1.0
+    in property <bool> shuffle-enabled: false;
+    in property <string> repeat-mode: "off";        // "off" | "one" | "all"
+    in property <string> queue-position: "";        // e.g. "3 / 10"
+
+    // Library data (set from Rust after Subsonic fetch)
+    in property <[LibraryItem]> library-items;
+    in property <string> library-header: "Artists";
+
+    // Callbacks fired to Rust
+    callback play-pause();
+    callback next-track();
+    callback prev-track();
+    callback scroll-up();
+    callback scroll-down();
+    callback select();
+    callback menu-pressed();
+    callback theme-changed(AppTheme);
+    callback toggle-shuffle();
+    callback cycle-repeat();
+
+    // View stack
+    if current-view == AppView.Menu: MenuView {
+        theme: root.current-theme;
+        selected-index <=> root.menu-selected-index;
+        scroll-up => { root.scroll-up(); }
+        scroll-down => { root.scroll-down(); }
+        select => { root.select(); }
+    }
+
+    if current-view == AppView.Library: LibraryView {
+        theme: root.current-theme;
+        selected-index <=> root.library-selected-index;
+        items: root.library-items;
+        header: root.library-header;
+        scroll-up => { root.scroll-up(); }
+        scroll-down => { root.scroll-down(); }
+        select => { root.select(); }
+        menu-pressed => { root.menu-pressed(); }
+    }
+
+    if current-view == AppView.NowPlaying: NowPlayingView {
+        theme: root.current-theme;
+        track-title: root.track-title;
+        track-artist: root.track-artist;
+        track-album: root.track-album;
+        playback-progress: root.playback-progress;
+        is-playing: root.is-playing;
+        album-art: root.album-art;
+        elapsed-time: root.elapsed-time;
+        total-time: root.total-time;
+        volume-level: root.volume-level;
+        shuffle-enabled: root.shuffle-enabled;
+        repeat-mode: root.repeat-mode;
+        queue-position: root.queue-position;
+        play-pause => { root.play-pause(); }
+        next-track => { root.next-track(); }
+        prev-track => { root.prev-track(); }
+        menu-pressed => { root.menu-pressed(); }
+        toggle-shuffle => { root.toggle-shuffle(); }
+        cycle-repeat => { root.cycle-repeat(); }
+        scroll-up => { root.scroll-up(); }
+        scroll-down => { root.scroll-down(); }
+    }
+}

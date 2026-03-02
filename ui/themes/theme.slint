@@ -1,0 +1,136 @@
+// theme.slint
+// Central theme token store. All views read from here rather than hard-coding
+// colours, so switching themes is a single property change on AppWindow.
+
+export enum AppTheme {
+    LiquidGlass,
+    Material,
+    ClassicIPod,
+}
+
+export global Theme {
+    // Set by AppWindow via property binding — see main.slint
+    in property <AppTheme> active: AppTheme.LiquidGlass;
+
+    // ── Base colours ──────────────────────────────────────────────────────────
+
+    out property <brush> background: active == AppTheme.ClassicIPod
+        ? #eeeeee                       // iPod shell silver-white
+        : active == AppTheme.Material
+        ? #121212
+        : #030310;                      // deep space black for glass
+
+    out property <brush> surface: active == AppTheme.ClassicIPod
+        ? #e2e2e2
+        : active == AppTheme.Material
+        ? #1e1e1e
+        : rgba(255, 255, 255, 0.07);
+
+    out property <brush> surface-border: active == AppTheme.ClassicIPod
+        ? rgba(0, 0, 0, 0.18)
+        : active == AppTheme.Material
+        ? #333333
+        : rgba(255, 255, 255, 0.16);
+
+    out property <brush> accent: active == AppTheme.ClassicIPod
+        ? #0a60d8                       // Apple blue
+        : active == AppTheme.Material
+        ? #bb86fc                       // Material purple
+        : #64d2ff;                      // icy teal
+
+    out property <brush> text-primary: active == AppTheme.ClassicIPod
+        ? #111111
+        : #ffffff;
+
+    out property <brush> text-secondary: active == AppTheme.ClassicIPod
+        ? #555555
+        : active == AppTheme.Material
+        ? #aaaaaa
+        : rgba(255, 255, 255, 0.55);
+
+    out property <brush> progress-track: active == AppTheme.ClassicIPod
+        ? rgba(0, 0, 0, 0.15)
+        : rgba(255, 255, 255, 0.13);
+
+    out property <brush> progress-fill: accent;
+
+    // ── Header bar ────────────────────────────────────────────────────────────
+
+    // Classic: silver metallic gradient. LiquidGlass: frosted panel. Material: dark.
+    out property <brush> header-bg: active == AppTheme.ClassicIPod
+        ? @linear-gradient(180deg, #dbdbdb, #b6b6b6)
+        : active == AppTheme.Material
+        ? #1a1a1a
+        : rgba(255, 255, 255, 0.06);
+
+    out property <brush> header-text: active == AppTheme.ClassicIPod
+        ? #111111
+        : #ffffff;
+
+    // ── Row selection ─────────────────────────────────────────────────────────
+
+    // Classic: the iconic blue pill gradient. LiquidGlass: frosted glass tint.
+    out property <brush> selection-bg: active == AppTheme.ClassicIPod
+        ? @linear-gradient(180deg, #5ca4f6, #1350cc)
+        : active == AppTheme.Material
+        ? #7a44c8
+        : rgba(100, 210, 255, 0.18);
+
+    // ── List rows ─────────────────────────────────────────────────────────────
+
+    // Unselected row background. Classic = white; LiquidGlass = barely-there glass.
+    out property <brush> row-bg: active == AppTheme.ClassicIPod
+        ? #ffffff
+        : rgba(255, 255, 255, 0.02);
+
+    // Horizontal line between rows
+    out property <brush> separator: active == AppTheme.ClassicIPod
+        ? rgba(0, 0, 0, 0.11)
+        : rgba(255, 255, 255, 0.05);
+
+    // ── Glass effects ─────────────────────────────────────────────────────────
+
+    // 1-px top-edge shimmer applied to glass panels and selected rows
+    out property <brush> shimmer: active == AppTheme.LiquidGlass
+        ? rgba(255, 255, 255, 0.38)
+        : Colors.transparent;
+
+    // ── Interactive controls ──────────────────────────────────────────────────
+
+    out property <brush> control-bg: active == AppTheme.LiquidGlass
+        ? rgba(255, 255, 255, 0.08)
+        : active == AppTheme.Material
+        ? rgba(255, 255, 255, 0.05)
+        : Colors.transparent;
+
+    out property <brush> control-border: active == AppTheme.LiquidGlass
+        ? rgba(255, 255, 255, 0.18)
+        : active == AppTheme.Material
+        ? rgba(255, 255, 255, 0.08)
+        : Colors.transparent;
+
+    out property <length> control-radius: active == AppTheme.LiquidGlass
+        ? 12px
+        : active == AppTheme.Material
+        ? 4px
+        : 2px;
+
+    // ── Typography ────────────────────────────────────────────────────────────
+
+    out property <length> font-size-large: 14px;
+    out property <length> font-size-medium: 11px;
+    out property <length> font-size-small: 9px;
+
+    // ── Geometry ──────────────────────────────────────────────────────────────
+
+    out property <length> radius: active == AppTheme.LiquidGlass
+        ? 12px
+        : active == AppTheme.Material
+        ? 4px
+        : 2px;
+
+    // ── Effects ───────────────────────────────────────────────────────────────
+
+    // Non-zero only for LiquidGlass — gates all frosted-glass decoration elements
+    out property <float> glass-opacity: active == AppTheme.LiquidGlass ? 1.0 : 0.0;
+}

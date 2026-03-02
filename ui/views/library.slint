@@ -1,0 +1,158 @@
+// views/library.slint
+
+import { Theme, AppTheme } from "../themes/theme.slint";
+
+export struct LibraryItem {
+    title: string,
+    subtitle: string,
+}
+
+export component LibraryView {
+    in property <AppTheme> theme;
+    in property <string> header: "Artists";
+    in property <[LibraryItem]> items;
+    in-out property <int> selected-index: 0;
+
+    callback scroll-up();
+    callback scroll-down();
+    callback select();
+    callback menu-pressed();
+
+    width: 100%;
+    height: 100%;
+
+    // ── Background ───────────────────────────────────────────────────────────
+    Rectangle {
+        width: 100%; height: 100%;
+        background: Theme.background;
+    }
+
+    // Background TouchArea — catches scroll wheel on empty space
+    TouchArea {
+        width: 100%; height: 100%;
+        scroll-event(e) => {
+            if e.delta-y < 0 { root.scroll-up(); } else { root.scroll-down(); }
+            EventResult.accept
+        }
+    }
+
+    // ── Header bar ───────────────────────────────────────────────────────────
+    Rectangle {
+        x: 0; y: 0; width: 100%; height: 24px;
+        background: Theme.header-bg;
+        clip: true;
+
+        // LiquidGlass: 1-px top shimmer line
+        Rectangle {
+            x: 0; y: 0; width: 100%; height: 1px;
+            background: Theme.shimmer;
+        }
+
+        // Back button
+        Text {
+            x: 4px; y: 4px;
+            text: "‹";
+            color: Theme.header-text;
+            font-size: Theme.font-size-large;
+        }
+        TouchArea {
+            x: 0; y: 0; width: 28px; height: 24px;
+            clicked => { root.menu-pressed(); }
+        }
+
+        // Title (inset to clear the back button)
+        Text {
+            x: 28px; y: 4px;
+            width: parent.width - 56px;
+            text: header;
+            color: Theme.header-text;
+            font-size: Theme.font-size-medium;
+            font-weight: 700;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+
+        // Bottom border
+        Rectangle {
+            y: 23px; width: 100%; height: 1px;
+            background: theme == AppTheme.ClassicIPod
+                ? rgba(0, 0, 0, 0.28)
+                : Theme.separator;
+        }
+    }
+
+    // ── List items ───────────────────────────────────────────────────────────
+    for item[i] in items: Rectangle {
+        x: 0;
+        y: 24px + i * 36px;
+        width: 100%;
+        height: 36px;
+        background: i == selected-index ? Theme.selection-bg : Theme.row-bg;
+        clip: true;
+
+        // Material only: alternating tint on unselected rows
+        if theme == AppTheme.Material && i != selected-index: Rectangle {
+            x: 0; y: 0; width: 100%; height: 100%;
+            background: Math.mod(i, 2) == 0 ? Theme.surface : Colors.transparent;
+        }
+
+        // LiquidGlass: 1-px shimmer at top of selected row
+        if Theme.glass-opacity > 0.0 && i == selected-index: Rectangle {
+            x: 0; y: 0; width: 100%; height: 1px;
+            background: Theme.shimmer;
+        }
+
+        Text {
+            x: 10px; y: 5px;
+            width: parent.width - 26px;
+            text: item.title;
+            color: i == selected-index ? #ffffff : Theme.text-primary;
+            font-size: Theme.font-size-medium;
+            font-weight: 600;
+            overflow: elide;
+        }
+
+        Text {
+            x: 10px; y: 20px;
+            width: parent.width - 26px;
+            text: item.subtitle;
+            color: i == selected-index ? rgba(255, 255, 255, 0.80) : Theme.text-secondary;
+            font-size: Theme.font-size-small;
+            overflow: elide;
+        }
+
+        // Chevron
+        Text {
+            x: parent.width - 16px; y: 10px;
+            width: 12px;
+            text: "›";
+            color: i == selected-index ? rgba(255, 255, 255, 0.75) : Theme.text-secondary;
+            font-size: Theme.font-size-medium;
+        }
+
+        // Row separator
+        Rectangle {
+            y: 35px; width: 100%; height: 1px;
+            background: i == selected-index ? Colors.transparent : Theme.separator;
+        }
+
+        TouchArea {
+            width: 100%; height: 100%;
+            clicked => { selected-index = i; root.select(); }
+            scroll-event(e) => {
+                if e.delta-y < 0 { root.scroll-up(); } else { root.scroll-down(); }
+                EventResult.accept
+            }
+        }
+    }
+
+    // Empty state
+    if items.length == 0: Text {
+        x: 0; y: 100px;
+        width: 100%;
+        text: "No items";
+        color: Theme.text-secondary;
+        font-size: Theme.font-size-medium;
+        horizontal-alignment: center;
+    }
+}
