@@ -52,6 +52,10 @@ tracing-subscriber = "0.3"
 toml = "1"
 dirs = "6"
 
+# Local database (queue persistence, favourites, resume state)
+# bundled = compile SQLite from source; required for cross-compilation to ARMv6.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 [build-dependencies]
 slint-build = "1.15"
 

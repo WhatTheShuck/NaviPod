@@ -2,6 +2,7 @@ import { Theme, AppTheme } from "themes/theme.slint";
 import { NowPlayingView } from "views/now_playing.slint";
 import { LibraryView, LibraryItem } from "views/library.slint";
 import { MenuView } from "views/menu.slint";
+import { KeyboardView } from "views/keyboard.slint";
 
 export { AppTheme } from "themes/theme.slint";
 export { LibraryItem } from "views/library.slint";
@@ -47,11 +48,27 @@ export component AppWindow inherits Window {
     in property <string> queue-position: "";        // e.g. "3 / 10"
     in-out property <bool> volume-visible: false;
     in-out property <bool> playback-options-visible: false;
-    in-out property <int> playback-options-index: 0;    // 0=shuffle, 1=repeat
+    in-out property <int> playback-options-index: 0;    // 0=shuffle, 1=repeat, 2=star, 3=queue
+    in-out property <bool> track-starred: false;
 
     // Library data (set from Rust after Subsonic fetch)
     in property <[LibraryItem]> library-items;
     in property <string> library-header: "Artists";
+    in property <string> library-empty-text: "No items";
+
+    // System status — pushed from Rust every ~30 s
+    in property <string> status-battery: "";       // "" | "87%" | "⚡87%"
+    in property <bool>   status-battery-low: false; // true → red
+    in property <string> status-wifi: "";          // "" | "W"
+    in property <bool>   status-wifi-on: false;    // true → accent colour
+    in property <string> status-bt: "";            // "" | "B"
+    in property <bool>   status-bt-connected: false; // true → accent colour
+
+    // ── Keyboard overlay state ────────────────────────────────────────────────
+    in-out property <bool>   keyboard-visible: false;
+    in-out property <string> keyboard-text: "";
+    in-out property <int>    keyboard-selected-index: 0;
+    in-out property <string> keyboard-prompt: "Keyboard";
 
     // Callbacks fired to Rust
     callback play-pause();
@@ -65,6 +82,9 @@ export component AppWindow inherits Window {
     callback toggle-shuffle();
     callback cycle-repeat();
     callback long-select();
+    callback keyboard-key-pressed(int);   // flat key index 0–28
+    callback keyboard-submitted(string);  // ✓ pressed — text is the full input
+    callback keyboard-dismissed();        // dismissed without submitting
 
     // View stack
     if current-view == AppView.Menu: MenuView {
@@ -80,6 +100,7 @@ export component AppWindow inherits Window {
         selected-index <=> root.library-selected-index;
         items: root.library-items;
         header: root.library-header;
+        empty-text: root.library-empty-text;
         scroll-up => { root.scroll-up(); }
         scroll-down => { root.scroll-down(); }
         select => { root.select(); }
@@ -109,7 +130,76 @@ export component AppWindow inherits Window {
         volume-visible <=> root.volume-visible;
         playback-options-visible <=> root.playback-options-visible;
         playback-options-index <=> root.playback-options-index;
+        track-starred: root.track-starred;
         scroll-up => { root.scroll-up(); }
         scroll-down => { root.scroll-down(); }
+    }
+
+    // ── System status overlay ─────────────────────────────────────────────────
+    // Transparent; drawn on top of all views — sits in the header band (y 0–24).
+    // Album art in modern NowPlaying ends at x≈244; icons start at x≈270+ so
+    // they fall in the dark background strip and remain readable on all views.
+    Rectangle {
+        x: 0; y: 0;
+        width: 100%; height: 24px;
+        background: Colors.transparent;
+
+        // WiFi — three arcs + centre dot, coloured by connection state
+        if status-wifi != "": Rectangle {
+            x: parent.width - 72px; y: 5px;
+            width: 14px; height: 13px;
+            background: Colors.transparent;
+            // Three concentric arcs opening upward
+            Path {
+                y: 0; width: 14px; height: 10px;
+                viewbox-x: 0; viewbox-y: 0; viewbox-width: 14; viewbox-height: 10;
+                stroke: status-wifi-on ? Theme.accent : Theme.text-secondary;
+                stroke-width: 1.2px;
+                fill: Colors.transparent;
+                // Each arc: M left-point A rx ry 0 0 1 right-point  (sweep=1 = upper half in screen coords)
+                commands: "M 0.5 10 A 6.5 6.5 0 0 1 13.5 10 M 2.5 10 A 4.5 4.5 0 0 1 11.5 10 M 4.5 10 A 2.5 2.5 0 0 1 9.5 10";
+            }
+            // Centre dot
+            Rectangle {
+                x: 5.5px; y: 10px;
+                width: 3px; height: 3px;
+                border-radius: 1.5px;
+                background: status-wifi-on ? Theme.accent : Theme.text-secondary;
+            }
+        }
+
+        // Bluetooth — classic B-rune logo path, coloured by connection state
+        if status-bt != "": Path {
+            x: parent.width - 54px; y: 5px;
+            width: 10px; height: 14px;
+            viewbox-x: 0; viewbox-y: 0; viewbox-width: 10; viewbox-height: 14;
+            stroke: status-bt-connected ? Theme.accent : Theme.text-secondary;
+            stroke-width: 1.3px;
+            fill: Colors.transparent;
+            // Trace: mid → upper-right → top → down staff → lower-right → mid
+            commands: "M 5 7 L 8.5 3.5 L 5 1 L 5 13 L 8.5 10.5 L 5 7";
+        }
+
+        // Battery — right-justified; red when low, ⚡-prefixed when charging
+        if status-battery != "": Text {
+            x: parent.width - 34px; y: 6px;
+            width: 32px;
+            text: status-battery;
+            color: status-battery-low ? #ff5555 : Theme.header-text;
+            font-size: 8px;
+            horizontal-alignment: right;
+        }
+    }
+
+    // ── Keyboard overlay ──────────────────────────────────────────────────────
+    // Rendered last so it appears above all views and the status bar.
+    // The KeyboardView itself is transparent above y=24 so status icons show through.
+    if keyboard-visible: KeyboardView {
+        theme: root.current-theme;
+        text: root.keyboard-text;
+        selected-index: root.keyboard-selected-index;
+        prompt: root.keyboard-prompt;
+        key-pressed(idx) => { root.keyboard-key-pressed(idx); }
+        dismiss => { root.keyboard-dismissed(); }
     }
 }

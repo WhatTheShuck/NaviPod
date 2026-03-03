@@ -42,6 +42,8 @@ pub enum ClickwheelEvent {
     Rewind,
     /// Long-press of the centre button
     LongSelect,
+    /// Long-press of the MENU button — dismisses keyboard modal
+    LongMenu,
 }
 
 // ── Option B: subprocess reader ───────────────────────────────────────────────
@@ -166,6 +168,7 @@ fn parse_event(s: &str) -> Option<ClickwheelEvent> {
         "FAST_FORWARD"  => Some(ClickwheelEvent::FastForward),
         "REWIND"        => Some(ClickwheelEvent::Rewind),
         "LONG_SELECT"   => Some(ClickwheelEvent::LongSelect),
+        "LONG_MENU"     => Some(ClickwheelEvent::LongMenu),
         _               => None,
     }
 }

@@ -1,0 +1,206 @@
+// views/keyboard.slint
+//
+// Full-screen QWERTY keyboard overlay.
+//
+// Key layout (29 keys, flat index):
+//   Row 0 (0–9):   Q W E R T Y U I O P
+//   Row 1 (10–18): A S D F G H J K L
+//   Row 2 (19–25): Z X C V B N M
+//   Row 3 (26–28): ⌫  SPC  ✓
+//
+// Navigation: Rust updates selected-index; each key fires key-pressed(int).
+// Tapping the dim overlay above the keyboard calls dismiss().
+
+import { Theme, AppTheme } from "../themes/theme.slint";
+
+export component KeyboardView {
+    in property <AppTheme> theme;
+    in property <string>   text: "";
+    in property <int>      selected-index: 0;
+    in property <string>   prompt: "Keyboard";
+
+    callback key-pressed(int);  // flat key index 0–28
+    callback dismiss();         // tap-outside or long-MENU
+
+    width: 100%; height: 100%;
+
+    // ── Dim overlay (status bar band at y=0–24 is left transparent) ──────────
+    Rectangle {
+        x: 0; y: 24px;
+        width: 100%; height: 68px; // from status bar bottom to panel top (24→92)
+        background: rgba(0, 0, 0, 0.78);
+        // Tap anywhere in the dim area → dismiss
+        TouchArea { clicked => { root.dismiss(); } }
+    }
+
+    // ── Keyboard panel (y=92, h=148, bottom edge = 240) ──────────────────────
+    Rectangle {
+        x: 0; y: 92px;
+        width: 100%; height: 148px;
+        background: theme == AppTheme.ClassicIPod
+            ? #d4d4d4
+            : theme == AppTheme.Material
+            ? #1c1c1e
+            : #0a0a18;
+
+        // Top shimmer line (LiquidGlass)
+        if Theme.glass-opacity > 0.0: Rectangle {
+            x: 0; y: 0; width: 100%; height: 1px;
+            background: Theme.shimmer;
+        }
+
+        // Top border (all themes)
+        Rectangle {
+            x: 0; y: 0; width: 100%; height: 1px;
+            background: theme == AppTheme.ClassicIPod
+                ? rgba(0, 0, 0, 0.25)
+                : rgba(255, 255, 255, 0.12);
+        }
+
+        // ── Prompt label ──────────────────────────────────────────────────────
+        Text {
+            x: 8px; y: 3px;
+            width: parent.width - 16px; height: 12px;
+            text: prompt;
+            color: Theme.text-secondary;
+            font-size: 9px;
+            overflow: elide;
+        }
+
+        // ── Text input box ────────────────────────────────────────────────────
+        Rectangle {
+            x: 4px; y: 15px;
+            width: parent.width - 8px; height: 20px;
+            background: theme == AppTheme.ClassicIPod
+                ? #ffffff
+                : rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: theme == AppTheme.ClassicIPod
+                ? rgba(0, 0, 0, 0.22)
+                : rgba(255, 255, 255, 0.18);
+
+            Text {
+                x: 5px; y: 3px;
+                width: parent.width - 10px; height: 14px;
+                text: text + "▌";
+                color: Theme.text-primary;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+
+        // ── Separator ─────────────────────────────────────────────────────────
+        Rectangle {
+            x: 0; y: 37px; width: 100%; height: 1px;
+            background: Theme.separator;
+        }
+
+        // ── Row 0: Q W E R T Y U I O P  (indices 0–9) ────────────────────────
+        // slot = 32px, key = 29px, left pad = 1px → 10 keys fit in 320px
+        for k[i] in ["Q","W","E","R","T","Y","U","I","O","P"]: Rectangle {
+            x: 1px + i * 32px;
+            y: 39px;
+            width: 29px; height: 24px;
+            background: i == selected-index ? Theme.accent : Theme.surface;
+            border-radius: 3px;
+
+            // LiquidGlass shimmer on selected key
+            if Theme.glass-opacity > 0.0 && i == selected-index: Rectangle {
+                x: 0; y: 0; width: 100%; height: 1px;
+                background: Theme.shimmer;
+            }
+
+            Text {
+                width: 100%; height: 100%;
+                text: k;
+                font-size: 10px;
+                font-weight: i == selected-index ? 700 : 400;
+                color: i == selected-index ? #ffffff : Theme.text-primary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea { clicked => { root.key-pressed(i); } }
+        }
+
+        // ── Row 1: A S D F G H J K L  (indices 10–18) ────────────────────────
+        // slot = 32px, key = 29px, left pad = 17px → 9 keys centered in 320px
+        for k[i] in ["A","S","D","F","G","H","J","K","L"]: Rectangle {
+            x: 17px + i * 32px;
+            y: 65px;
+            width: 29px; height: 24px;
+            background: (i + 10) == selected-index ? Theme.accent : Theme.surface;
+            border-radius: 3px;
+
+            if Theme.glass-opacity > 0.0 && (i + 10) == selected-index: Rectangle {
+                x: 0; y: 0; width: 100%; height: 1px;
+                background: Theme.shimmer;
+            }
+
+            Text {
+                width: 100%; height: 100%;
+                text: k;
+                font-size: 10px;
+                font-weight: (i + 10) == selected-index ? 700 : 400;
+                color: (i + 10) == selected-index ? #ffffff : Theme.text-primary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea { clicked => { root.key-pressed(i + 10); } }
+        }
+
+        // ── Row 2: Z X C V B N M  (indices 19–25) ────────────────────────────
+        // slot = 32px, key = 29px, left pad = 49px → 7 keys centered in 320px
+        for k[i] in ["Z","X","C","V","B","N","M"]: Rectangle {
+            x: 49px + i * 32px;
+            y: 91px;
+            width: 29px; height: 24px;
+            background: (i + 19) == selected-index ? Theme.accent : Theme.surface;
+            border-radius: 3px;
+
+            if Theme.glass-opacity > 0.0 && (i + 19) == selected-index: Rectangle {
+                x: 0; y: 0; width: 100%; height: 1px;
+                background: Theme.shimmer;
+            }
+
+            Text {
+                width: 100%; height: 100%;
+                text: k;
+                font-size: 10px;
+                font-weight: (i + 19) == selected-index ? 700 : 400;
+                color: (i + 19) == selected-index ? #ffffff : Theme.text-primary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea { clicked => { root.key-pressed(i + 19); } }
+        }
+
+        // ── Row 3: ⌫  SPC  ✓  (indices 26–28) ───────────────────────────────
+        // 3 keys × 100px each, 6px gaps, 4px outer margins
+        // x: 4, 110, 216
+        for k[i] in ["⌫", " ", "✓"]: Rectangle {
+            x: 4px + i * 106px;
+            y: 117px;
+            width: 100px; height: 24px;
+            background: (i + 26) == selected-index ? Theme.accent : Theme.surface;
+            border-radius: 3px;
+
+            if Theme.glass-opacity > 0.0 && (i + 26) == selected-index: Rectangle {
+                x: 0; y: 0; width: 100%; height: 1px;
+                background: Theme.shimmer;
+            }
+
+            Text {
+                width: 100%; height: 100%;
+                // Show "SPC" for the space key (i==1)
+                text: i == 1 ? "SPC" : k;
+                font-size: 11px;
+                font-weight: (i + 26) == selected-index ? 700 : 400;
+                color: (i + 26) == selected-index ? #ffffff : Theme.text-primary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea { clicked => { root.key-pressed(i + 26); } }
+        }
+    }
+}

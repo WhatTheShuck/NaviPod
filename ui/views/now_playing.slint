@@ -18,7 +18,8 @@ export component NowPlayingView {
     in property <string> queue-position: "";
     in-out property <bool> volume-visible: false;
     in-out property <bool> playback-options-visible: false;
-    in-out property <int> playback-options-index: 0;    // 0=shuffle, 1=repeat, 2=queue
+    in-out property <int> playback-options-index: 0;    // 0=shuffle, 1=repeat, 2=star, 3=queue
+    in property <bool> track-starred: false;
 
     callback play-pause();
     callback next-track();
@@ -425,8 +426,8 @@ export component NowPlayingView {
     // ═══════════════════════════════════════════════════════════════════════════
 
     if playback-options-visible: Rectangle {
-        x: 60px; y: 94px;
-        width: 200px; height: 112px;
+        x: 60px; y: 78px;
+        width: 200px; height: 144px;
         border-radius: 14px;
         background: theme == AppTheme.ClassicIPod ? #ebebeb : rgba(18, 18, 20, 0.96);
         border-width: 1px;
@@ -485,12 +486,34 @@ export component NowPlayingView {
             }
         }
 
-        // ── Queue row (informational — SELECT closes menu) ────────────────────
+        // ── Star row ──────────────────────────────────────────────────────────
         Rectangle {
             x: 4px; y: 72px;
             width: 192px; height: 32px;
             border-radius: 8px;
             background: playback-options-index == 2 ? Theme.selection-bg : Colors.transparent;
+
+            Text {
+                x: 10px; y: 7px;
+                text: track-starred ? "★  Starred" : "☆  Star";
+                color: Theme.text-primary;
+                font-size: 11px;
+            }
+            Text {
+                x: 0; y: 7px; width: 180px;
+                text: track-starred ? "ON" : "off";
+                color: track-starred ? Theme.accent : Theme.text-secondary;
+                font-size: 11px;
+                horizontal-alignment: right;
+            }
+        }
+
+        // ── Queue row (informational — SELECT closes menu) ────────────────────
+        Rectangle {
+            x: 4px; y: 104px;
+            width: 192px; height: 32px;
+            border-radius: 8px;
+            background: playback-options-index == 3 ? Theme.selection-bg : Colors.transparent;
 
             Text {
                 x: 10px; y: 7px;

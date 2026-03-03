@@ -135,12 +135,18 @@ slint::slint! {
             }
         }
 
-        // MENU — top sector
+        // MENU — top sector (left-click = MENU, right-click = LONG_MENU)
         TouchArea {
             x: 90px; y: 60px; width: 120px; height: 63px;
             clicked => {
                 root.last-event = "MENU";
                 root.send-event("MENU");
+            }
+            pointer-event(e) => {
+                if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                    root.last-event = "LONG_MENU";
+                    root.send-event("LONG_MENU");
+                }
             }
         }
 

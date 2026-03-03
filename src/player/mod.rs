@@ -1,3 +1,4 @@
+use crate::db::{Db, ResumeState};
 use crate::subsonic::{Client, Track};
 use rand::seq::SliceRandom;
 use rodio::mixer::Mixer;
@@ -58,17 +59,43 @@ pub struct Player {
     pub state_tx: watch::Sender<PlaybackState>,
     pub state_rx: watch::Receiver<PlaybackState>,
     state: Arc<Mutex<PlaybackState>>,
+    db: Db,
 }
 
 impl Player {
-    pub fn new(subsonic: Client) -> Self {
-        let initial = PlaybackState::initial();
+    pub fn new(subsonic: Client, db: Db) -> Self {
+        let mut initial = PlaybackState::initial();
+
+        // Restore persisted preferences and queue from DB.
+        let resume = db.load_resume().ok().flatten();
+        if let Some(ref r) = resume {
+            initial.volume = r.volume;
+            initial.shuffle = r.shuffle;
+            initial.repeat = match r.repeat_mode.as_str() {
+                "One" => RepeatMode::One,
+                "All" => RepeatMode::All,
+                _     => RepeatMode::None,
+            };
+        }
+        if let Ok(tracks) = db.load_queue() {
+            if !tracks.is_empty() {
+                let idx = resume
+                    .as_ref()
+                    .map(|r| r.queue_index.min(tracks.len() - 1))
+                    .unwrap_or(0);
+                initial.track = Some(tracks[idx].clone());
+                initial.queue = tracks;
+                initial.queue_index = idx;
+            }
+        }
+
         let (state_tx, state_rx) = watch::channel(initial.clone());
         Self {
             subsonic,
             state_tx,
             state_rx,
             state: Arc::new(Mutex::new(initial)),
+            db,
         }
     }
 
@@ -94,6 +121,8 @@ impl Player {
         let current_player: Arc<Mutex<Option<rodio::Player>>> = Arc::new(Mutex::new(None));
 
         let mut progress_tick = tokio::time::interval(Duration::from_millis(500));
+        // Save progress to DB every 10 ticks (5 seconds) while playing.
+        let mut progress_save_ticks: u8 = 0;
 
         loop {
             tokio::select! {
@@ -108,6 +137,7 @@ impl Player {
                         &self.state_tx,
                         &mixer,
                         &current_player,
+                        &self.db,
                     ).await;
                 }
 
@@ -118,15 +148,57 @@ impl Player {
                         &self.state_tx,
                         &mixer,
                         &current_player,
+                        &self.db,
                     ).await;
+
+                    progress_save_ticks += 1;
+                    if progress_save_ticks >= 10 {
+                        progress_save_ticks = 0;
+                        let s = self.state.lock().unwrap();
+                        if s.is_playing {
+                            save_resume_only(&self.db, &s);
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// ── Free functions ────────────────────────────────────────────────────────────
+// ── DB helpers ────────────────────────────────────────────────────────────────
 
+fn repeat_mode_str(r: &RepeatMode) -> &'static str {
+    match r {
+        RepeatMode::None => "None",
+        RepeatMode::One  => "One",
+        RepeatMode::All  => "All",
+    }
+}
+
+fn save_session(db: &Db, state: &Arc<Mutex<PlaybackState>>) {
+    let s = state.lock().unwrap();
+    if let Err(e) = db.save_queue(&s.queue) {
+        error!("Failed to save queue: {e}");
+    }
+    save_resume_only(db, &s);
+}
+
+fn save_resume_only(db: &Db, s: &PlaybackState) {
+    let resume = ResumeState {
+        queue_index: s.queue_index,
+        progress: s.progress,
+        volume: s.volume,
+        shuffle: s.shuffle,
+        repeat_mode: repeat_mode_str(&s.repeat).to_owned(),
+    };
+    if let Err(e) = db.save_resume(&resume) {
+        error!("Failed to save resume state: {e}");
+    }
+}
+
+// ── Command handler ───────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
 async fn handle_command(
     cmd: PlayerCommand,
     subsonic: &Client,
@@ -134,9 +206,16 @@ async fn handle_command(
     state_tx: &watch::Sender<PlaybackState>,
     mixer: &Mixer,
     current_player: &Arc<Mutex<Option<rodio::Player>>>,
+    db: &Db,
 ) {
     match cmd {
         PlayerCommand::Play(track) => {
+            {
+                let mut s = state.lock().unwrap();
+                s.queue = vec![track.clone()];
+                s.queue_index = 0;
+            }
+            save_session(db, state);
             play_track(subsonic, state, state_tx, mixer, current_player, &track).await;
         }
 
@@ -159,6 +238,7 @@ async fn handle_command(
                 s.queue = final_tracks.clone();
                 s.queue_index = final_index;
             }
+            save_session(db, state);
             play_track(subsonic, state, state_tx, mixer, current_player, &final_tracks[final_index]).await;
         }
 
@@ -169,15 +249,27 @@ async fn handle_command(
             let mut s = state.lock().unwrap();
             s.is_playing = false;
             state_tx.send(s.clone()).ok();
+            save_resume_only(db, &s);
         }
 
         PlayerCommand::Resume => {
-            if let Some(p) = current_player.lock().unwrap().as_ref() {
-                p.play();
+            let (has_player, track_opt, volume) = {
+                let s = state.lock().unwrap();
+                let has = current_player.lock().unwrap().is_some();
+                let t = if !has { s.track.clone() } else { None };
+                (has, t, s.volume)
+            };
+            let _ = volume; // used implicitly via play_track
+            if has_player {
+                current_player.lock().unwrap().as_ref().unwrap().play();
+                let mut s = state.lock().unwrap();
+                s.is_playing = true;
+                state_tx.send(s.clone()).ok();
+                save_resume_only(db, &s);
+            } else if let Some(track) = track_opt {
+                // Restore session: no active player but we know the track.
+                play_track(subsonic, state, state_tx, mixer, current_player, &track).await;
             }
-            let mut s = state.lock().unwrap();
-            s.is_playing = true;
-            state_tx.send(s.clone()).ok();
         }
 
         PlayerCommand::Next => {
@@ -195,6 +287,7 @@ async fn handle_command(
                 }
             };
             if let Some(track) = next {
+                save_session(db, state);
                 play_track(subsonic, state, state_tx, mixer, current_player, &track).await;
             }
         }
@@ -214,6 +307,7 @@ async fn handle_command(
                 }
             };
             if let Some(track) = prev {
+                save_session(db, state);
                 play_track(subsonic, state, state_tx, mixer, current_player, &track).await;
             }
         }
@@ -241,12 +335,14 @@ async fn handle_command(
             let mut s = state.lock().unwrap();
             s.volume = v;
             state_tx.send(s.clone()).ok();
+            save_resume_only(db, &s);
         }
 
         PlayerCommand::ToggleShuffle => {
             let mut s = state.lock().unwrap();
             s.shuffle = !s.shuffle;
             state_tx.send(s.clone()).ok();
+            save_resume_only(db, &s);
         }
 
         PlayerCommand::CycleRepeat => {
@@ -257,6 +353,7 @@ async fn handle_command(
                 RepeatMode::One  => RepeatMode::None,
             };
             state_tx.send(s.clone()).ok();
+            save_resume_only(db, &s);
         }
     }
 }
@@ -268,6 +365,7 @@ async fn tick_progress(
     state_tx: &watch::Sender<PlaybackState>,
     mixer: &Mixer,
     current_player: &Arc<Mutex<Option<rodio::Player>>>,
+    db: &Db,
 ) {
     let (is_playing, duration_opt) = {
         let s = state.lock().unwrap();
@@ -290,7 +388,6 @@ async fn tick_progress(
             let repeat = s.repeat.clone();
             match repeat {
                 RepeatMode::One => {
-                    // Replay the same track
                     Some(s.queue[s.queue_index].clone())
                 }
                 RepeatMode::All => {
@@ -306,7 +403,6 @@ async fn tick_progress(
                         s.queue_index += 1;
                         Some(s.queue[s.queue_index].clone())
                     } else {
-                        // End of queue
                         s.is_playing = false;
                         s.progress = 1.0;
                         state_tx.send(s.clone()).ok();
@@ -316,6 +412,7 @@ async fn tick_progress(
             }
         };
         if let Some(track) = next {
+            save_session(db, state);
             play_track(subsonic, state, state_tx, mixer, current_player, &track).await;
         }
         return;

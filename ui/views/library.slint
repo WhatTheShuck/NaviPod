@@ -11,6 +11,7 @@ export component LibraryView {
     in property <AppTheme> theme;
     in property <string> header: "Artists";
     in property <[LibraryItem]> items;
+    in property <string> empty-text: "No items";
     in-out property <int> selected-index: 0;
 
     callback scroll-up();
@@ -150,7 +151,7 @@ export component LibraryView {
     if items.length == 0: Text {
         x: 0; y: 100px;
         width: 100%;
-        text: "No items";
+        text: empty-text;
         color: Theme.text-secondary;
         font-size: Theme.font-size-medium;
         horizontal-alignment: center;
